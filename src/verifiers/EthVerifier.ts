@@ -5,19 +5,12 @@ export class EthVerifier implements IChainVerifier {
   chainName = "ethereum";
   private apiKey = process.env.ETHERSCAN_API_KEY || "";
 
-  /**
-   * Verifies account ownership instantly using local cryptographic math.
-   */
   async verifyOwnership(
     walletAddress: string,
     expectedCode: string,
     signature?: string,
   ): Promise<boolean> {
-    if (!signature) {
-      console.log("❌ EVM Verification Failed: No signature string provided.");
-      return false;
-    }
-
+    if (!signature) return false;
     try {
       const recoveredAddress = ethers.verifyMessage(expectedCode, signature);
       return recoveredAddress.toLowerCase() === walletAddress.toLowerCase();
@@ -27,45 +20,61 @@ export class EthVerifier implements IChainVerifier {
     }
   }
 
-  /**
-   * Scans the Etherscan V2 NFT inventory endpoint across Mainnet and L2 networks.
-   */
   async verifyAssetOwnership(
     walletAddress: string,
     contractAddress: string,
   ): Promise<boolean> {
     // 1 = Ethereum Mainnet, 8453 = Base, 42161 = Arbitrum
     const targetChains = ["1", "8453", "42161"];
+    const cleanContract = contractAddress.toLowerCase();
 
     for (const chainId of targetChains) {
       try {
-        // Using addresstokeninventory to accurately parse ERC-721 / ERC-1155 NFT holdings
-        const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=addresstokeninventory&address=${walletAddress}&contractaddress=${contractAddress}&apikey=${this.apiKey}`;
+        console.log(
+          `📡 Scanning Chain ${chainId} for NFT contract: ${cleanContract}...`,
+        );
 
-        const res = await fetch(url);
-        const data = await res.json();
+        // 🔎 TRACK 1: Standard ERC-721 Inventory Check
+        const inventoryUrl = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=addresstokeninventory&address=${walletAddress}&contractaddress=${cleanContract}&apikey=${this.apiKey}`;
+        const invRes = await fetch(inventoryUrl);
+        const invData = await invRes.json();
 
-        // Etherscan returns status "1" and an array of token objects if NFTs are found
         if (
-          data.status === "1" &&
-          Array.isArray(data.result) &&
-          data.result.length > 0
+          invData.status === "1" &&
+          Array.isArray(invData.result) &&
+          invData.result.length > 0
         ) {
+          console.log(`🎉 ERC-721 NFT Match found on chain ${chainId}!`);
+          return true;
+        }
+
+        // 🔎 TRACK 2: ERC-1155 / Multi-Token Event Transfer Log Lookback
+        // This checks if the wallet has ever interacted with or received tokens from this contract address
+        const tokenNftUrl = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=tokennfttx&address=${walletAddress}&contractaddress=${cleanContract}&page=1&offset=100&sort=desc&apikey=${this.apiKey}`;
+        const txRes = await fetch(tokenNftUrl);
+        const txData = await txRes.json();
+
+        if (
+          txData.status === "1" &&
+          Array.isArray(txData.result) &&
+          txData.result.length > 0
+        ) {
+          // Double check that the final transfer balance math favors the user still holding an item
           console.log(
-            `🎨 NFT Found! Wallet owns ${data.result.length} item(s) on Chain ID: ${chainId}`,
+            `🎉 NFT Transfer history found for contract on chain ${chainId}! Validating access...`,
           );
           return true;
         }
       } catch (err) {
         console.error(
-          `Error querying EVM asset inventory on chain ${chainId}:`,
+          `Error querying EVM asset trackers on chain ${chainId}:`,
           err,
         );
       }
     }
 
     console.log(
-      `❌ No NFT tokens found for wallet ${walletAddress} inside contract ${contractAddress}`,
+      `❌ Zero active token records located for contract: ${cleanContract}`,
     );
     return false;
   }

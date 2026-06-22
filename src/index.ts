@@ -99,30 +99,26 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   ) {
     const selectedChain = interaction.values[0] as "tezos" | "ethereum";
 
-    // Generate a simple string format that doesn't cause formatting issues across wallets
     const code = `Antzos-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     activeSessions.set(interaction.user.id, { code, chain: selectedChain });
 
+    let instructionText = "";
+
     if (selectedChain === "tezos") {
-      await interaction.reply({
-        content:
-          `🐜 **AnTzOS Tezos Verification (Frictionless)**\n\n` +
-          `1. Copy your code: \`${code}\`\n` +
-          `2. Paste this code into your **Tezos Domains** fields (Nickname, Twitter, etc).\n` +
-          `3. **Re-run \`/verify\` right now**, choose Tezos, and click the form validation window field to input your wallet address string!`,
-        ephemeral: true,
-      });
+      instructionText =
+        `🐜 **AnTzOS Tezos Verification**\n\n` +
+        `1. Copy your code: \`${code}\`\n` +
+        `2. Paste this code into your **Tezos Domains** fields (Nickname, Twitter, etc).\n` +
+        `3. Save the transaction on-chain.\n\n` +
+        `*Fill out your wallet address inside the modal window currently on your screen to complete authentication.*`;
     } else {
-      await interaction.reply({
-        content:
-          `⛓️ **AnTzOS Ethereum & L2 Verification (Instant)**\n\n` +
-          `1. Copy your code: \`${code}\`\n` +
-          `2. Open **[etherscan.io/verifiedSignatures](https://etherscan.io/verifiedSignatures)**\n` +
-          `3. Connect your wallet, paste the code, and click **Sign**.\n` +
-          `4. Copy the long **Signature Hash** (starts with \`0x\`). Do not click publish!\n\n` +
-          `*Re-run \`/verify\` right now, select Ethereum, and submit the modal fields below.*`,
-        ephemeral: true,
-      });
+      instructionText =
+        `⛓️ **AnTzOS Ethereum & L2 Verification**\n\n` +
+        `1. Copy your code: \`${code}\`\n` +
+        `2. Open **[etherscan.io/verifiedSignatures](https://etherscan.io/verifiedSignatures)**\n` +
+        `3. Connect your wallet, paste the code, and click **Sign**.\n` +
+        `4. Copy the long **Signature Hash** (starts with \`0x\`).\n\n` +
+        `*Fill out your address and signature string inside the modal window currently on your screen to complete authentication.*`;
     }
 
     // Launch the data collection modal window form layout
@@ -141,7 +137,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       new ActionRowBuilder<TextInputBuilder>().addComponents(addrInput),
     );
 
-    // If Ethereum, add a separate row field explicitly to capture the signature string
     if (selectedChain === "ethereum") {
       const sigInput = new TextInputBuilder()
         .setCustomId("crypto_sig")
@@ -156,7 +151,13 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       );
     }
 
-    await interaction.followUp({ components: [], ephemeral: true });
+    // FIX: Update the active menu item natively instead of firing an empty followUp request
+    await interaction.update({
+      content: instructionText,
+      components: [], // This cleanly removes the dropdown menu layout
+    });
+
+    // Instantly show the user the modal form over the interface text box
     await interaction.showModal(modal);
     return;
   }

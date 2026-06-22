@@ -8,6 +8,8 @@ import {
   TextInputBuilder,
   TextInputStyle,
   Interaction,
+  ButtonBuilder,
+  ButtonStyle,
 } from "discord.js";
 import { TezosVerifier } from "./verifiers/TezosVerifier";
 import { EthVerifier } from "./verifiers/EthVerifier";
@@ -107,21 +109,45 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     if (selectedChain === "tezos") {
       instructionText =
         `🐜 **AnTzOS Tezos Verification**\n\n` +
-        `1. Copy your code: \`${code}\`\n` +
+        `1. Copy your unique code: \`${code}\`\n` +
         `2. Paste this code into your **Tezos Domains** fields (Nickname, Twitter, etc).\n` +
         `3. Save the transaction on-chain.\n\n` +
-        `*Fill out your wallet address inside the modal window currently on your screen to complete authentication.*`;
+        `*Once saved, click the green button below to enter your wallet address.*`;
     } else {
       instructionText =
         `⛓️ **AnTzOS Ethereum & L2 Verification**\n\n` +
-        `1. Copy your code: \`${code}\`\n` +
+        `1. Copy your unique code: \`${code}\`\n` +
         `2. Open **[etherscan.io/verifiedSignatures](https://etherscan.io/verifiedSignatures)**\n` +
         `3. Connect your wallet, paste the code, and click **Sign**.\n` +
         `4. Copy the long **Signature Hash** (starts with \`0x\`).\n\n` +
-        `*Fill out your address and signature string inside the modal window currently on your screen to complete authentication.*`;
+        `*Once copied, click the green button below to paste your signature data.*`;
     }
 
-    // Launch the data collection modal window form layout
+    // CREATE A TRIGGER BUTTON: This gives the user a clean interaction anchor to open the modal
+    const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`open_modal_${selectedChain}`)
+        .setLabel("🔓 Open Verification Form")
+        .setStyle(ButtonStyle.Success),
+    );
+
+    // Update the message layout with your instructions text and the new button row
+    await interaction.update({
+      content: instructionText,
+      components: [buttonRow],
+    });
+    return;
+  }
+
+  // 2.5 Button Trigger Logic to display the form reliably
+  if (
+    interaction.isButton() &&
+    interaction.customId.startsWith("open_modal_")
+  ) {
+    const selectedChain = interaction.customId.replace("open_modal_", "") as
+      | "tezos"
+      | "ethereum";
+
     const modal = new ModalBuilder()
       .setCustomId("verify_modal")
       .setTitle(`${selectedChain.toUpperCase()} Verification`);
@@ -151,13 +177,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       );
     }
 
-    // FIX: Update the active menu item natively instead of firing an empty followUp request
-    await interaction.update({
-      content: instructionText,
-      components: [], // This cleanly removes the dropdown menu layout
-    });
-
-    // Instantly show the user the modal form over the interface text box
+    // This interaction is fresh and direct, meaning the modal is guaranteed to pop up!
     await interaction.showModal(modal);
     return;
   }

@@ -8,26 +8,40 @@ export class TezosVerifier implements IChainVerifier {
     expectedCode: string,
   ): Promise<boolean> {
     try {
-      // 1. Query the dedicated TzKT Domains API filtering by the owner's address
+      // The .any parameter tells TzKT to match if the wallet is EITHER the Owner OR the target Address resolution line
       const res = await fetch(
-        `https://api.tzkt.io/v1/domains?owner=${walletAddress}`,
+        `https://api.tzkt.io/v1/domains?anyof.owner.address=${walletAddress}`,
       );
-      const data = await res.json();
+      const domains = await res.json();
 
-      // If the user doesn't own any .tez domains, exit immediately
-      if (!Array.isArray(data) || data.length === 0) {
-        console.log(`❌ No Tezos Domains found for address: ${walletAddress}`);
+      if (!Array.isArray(domains) || domains.length === 0) {
+        console.log(
+          `❌ No registered Tezos Domains found matching wallet address properties: ${walletAddress}`,
+        );
         return false;
       }
 
-      // 2. Convert the entire domain records array (including data, data.nickname, etc.) to lowercase text
-      const rawDomainsString = JSON.stringify(data).toLowerCase();
       const cleanTargetCode = expectedCode.toLowerCase();
 
-      // 3. Search for the AnTzOS verification code string
-      return rawDomainsString.includes(cleanTargetCode);
+      // Loop through all domains found under either ownership or address mapping records
+      for (const record of domains) {
+        // Flatten the complete data layout object tree
+        const flatRecordString = JSON.stringify(record).toLowerCase();
+
+        if (flatRecordString.includes(cleanTargetCode)) {
+          console.log(
+            `✅ Match discovered inside domain data matrix for: ${record.name}`,
+          );
+          return true;
+        }
+      }
+
+      console.log(
+        `❌ Target code string was not detected inside the found domain parameters.`,
+      );
+      return false;
     } catch (error) {
-      console.error("AnTzOS Tezos Domains API Error:", error);
+      console.error("AnTzOS Multi-Field Domain Verification Failure:", error);
       return false;
     }
   }

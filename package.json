@@ -1,0 +1,33 @@
+{
+  "name": "antzos-bot",
+  "version": "1.0.0",
+  "description": "A portal-free, multi-chain Discord verification bot",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PixelSushiRobot/antzos-bot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/PixelSushiRobot/antzos-bot/issues"
+  },
+  "homepage": "https://github.com/PixelSushiRobot/antzos-bot#readme",
+  "dependencies": {
+    "@taquito/utils": "^24.3.0",
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

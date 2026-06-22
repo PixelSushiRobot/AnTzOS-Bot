@@ -1,10 +1,10 @@
-import { IChainVerifier } from "./IChainVerifier";
+import { IChainVerifier } from "./IChainVerifier.js";
 import { ethers } from "ethers";
 
 export class EthVerifier implements IChainVerifier {
   chainName = "ethereum";
-  private apiKey = process.env.ETHERSCAN_API_KEY || "";
 
+  // Instant local cryptographic math verification (Still 100% free)
   async verifyOwnership(
     walletAddress: string,
     expectedCode: string,
@@ -20,57 +20,66 @@ export class EthVerifier implements IChainVerifier {
     }
   }
 
+  // Free RPC-based balance scanner (Bypasses Etherscan entirely!)
   async verifyAssetOwnership(
     walletAddress: string,
     contractAddress: string,
   ): Promise<boolean> {
-    // 1 = Ethereum Mainnet, 8453 = Base, 42161 = Arbitrum
-    const targetChains = ["1", "8453", "42161"];
-    const targetWallet = walletAddress.toLowerCase();
+    const cleanWallet = walletAddress.toLowerCase();
     const cleanContract = contractAddress.toLowerCase();
 
-    for (const chainId of targetChains) {
+    // High-performance public, free RPC nodes
+    const rpcNetworks = [
+      { name: "Ethereum Mainnet", url: "https://cloudflare-eth.com" },
+      { name: "Base L2", url: "https://mainnet.base.org" },
+      { name: "Arbitrum One", url: "https://arb1.arbitrum.io/rpc" },
+    ];
+
+    // The universal code layout (ABI) needed to ask a contract: "How many tokens does this user have?"
+    const minimalAbi = [
+      "function balanceOf(address owner) view returns (uint256)",
+    ];
+
+    for (const network of rpcNetworks) {
       try {
+        console.log(`📡 Dialing ${network.name} RPC node directly...`);
+
+        // Connect to the blockchain network directly
+        const provider = new ethers.JsonRpcProvider(network.url);
+
+        // Bind the NFT contract using our minimal blueprint
+        const contract = new ethers.Contract(
+          cleanContract,
+          minimalAbi,
+          provider,
+        ) as {
+          balanceOf?: (owner: string) => Promise<bigint>;
+        };
+
+        // Call the contract directly on-chain
+        const balance = await contract.balanceOf?.(cleanWallet);
+        if (balance === undefined) throw new Error("balanceOf not available");
+
         console.log(
-          `📡 Scanning Chain ${chainId} transfer history for contract: ${cleanContract}...`,
+          `📊 [${network.name}] Raw Balance Response: ${balance.toString()}`,
         );
 
-        // Use tokennfttx — the most stable, globally supported Etherscan endpoint in existence
-        const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=tokennfttx&address=${targetWallet}&contractaddress=${cleanContract}&page=1&offset=100&sort=asc&apikey=${this.apiKey}`;
-
-        const res = await fetch(url);
-        const data = await res.json();
-
-        if (data.status === "1" && Array.isArray(data.result)) {
-          let tokenCount = 0;
-
-          // Process the transfer logs to calculate current ownership state
-          for (const tx of data.result) {
-            if (tx.to && tx.to.toLowerCase() === targetWallet) {
-              tokenCount++; // User received an NFT
-            }
-            if (tx.from && tx.from.toLowerCase() === targetWallet) {
-              tokenCount--; // User transferred/sold an NFT
-            }
-          }
-
-          if (tokenCount > 0) {
-            console.log(
-              `🎉 NFT Confirmed! Wallet currently holds ${tokenCount} asset(s) on Chain ID: ${chainId}`,
-            );
-            return true;
-          }
+        if (Number(balance) > 0) {
+          console.log(
+            `🎉 NFT Asset Confirmed! Wallet holds ${balance.toString()} item(s) on ${network.name}`,
+          );
+          return true;
         }
       } catch (err) {
-        console.error(
-          `Error querying EVM asset trackers on chain ${chainId}:`,
-          err,
+        // This is normal; it will fail on networks where the contract doesn't exist
+        console.log(
+          `ℹ️ Contract not found or inactive on ${network.name}. Moving to next chain...`,
         );
       }
     }
 
     console.log(
-      `❌ No active token holdings located for contract: ${cleanContract}`,
+      `❌ No active token balance found across Mainnet, Base, or Arbitrum for contract: ${cleanContract}`,
     );
     return false;
   }

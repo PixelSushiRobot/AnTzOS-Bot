@@ -1,4 +1,4 @@
-import { IChainVerifier } from "./IChainVerifier";
+import { IChainVerifier } from "./IChainVerifier.js";
 
 export class TezosVerifier implements IChainVerifier {
   chainName = "tezos";
@@ -66,8 +66,13 @@ export class TezosVerifier implements IChainVerifier {
       const res = await fetch(
         `https://api.tzkt.io/v1/tokens/balances?account=${walletAddress}&token.contract=${contractAddress}`,
       );
-      const data = await res.json();
-      return data.length > 0 && parseInt(data[0].balance) > 0;
+      const data = (await res.json()) as Array<{ balance?: string }>;
+      return (
+        Array.isArray(data) &&
+        data.length > 0 &&
+        typeof data[0]?.balance === "string" &&
+        parseInt(data[0].balance, 10) > 0
+      );
     } catch (error) {
       console.error("AnTzOS Tezos Balance Check Error:", error);
       return false;

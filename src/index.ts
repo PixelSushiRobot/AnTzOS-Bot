@@ -11,8 +11,8 @@ import {
   ButtonBuilder,
   ButtonStyle,
 } from "discord.js";
-import { TezosVerifier } from "./verifiers/TezosVerifier";
-import { EthVerifier } from "./verifiers/EthVerifier";
+import { TezosVerifier } from "./verifiers/TezosVerifier.js";
+import { EthVerifier } from "./verifiers/EthVerifier.js";
 import "dotenv/config";
 
 const client = new Client({

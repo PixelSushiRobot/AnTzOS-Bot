@@ -1,49 +1,38 @@
-import type { IChainVerifier } from "./IChainVerifier.js";
-
-type TzktAccountResponse = {
-  alias?: string;
-  metadata?: unknown;
-};
-
-type TzktTokenBalanceResponse = Array<{
-  balance?: string;
-}>;
+import { IChainVerifier } from "./IChainVerifier";
 
 export class TezosVerifier implements IChainVerifier {
-  public chainName = "tezos";
+  chainName = "tezos";
 
-  /**
-   * Verifies account ownership by checking if the user added the unique
-   * AnTzOS token code into their global Tezos Profile or Tezos Domain metadata.
-   */
-  public async verifyOwnership(
+  async verifyOwnership(
     walletAddress: string,
     expectedCode: string,
   ): Promise<boolean> {
     try {
-      const res = await fetch(`https://api.tzkt.io/v1/accounts/${walletAddress}`);
-      const data = (await res.json()) as TzktAccountResponse;
+      // 1. Query the dedicated TzKT Domains API filtering by the owner's address
+      const res = await fetch(
+        `https://api.tzkt.io/v1/domains?owner=${walletAddress}`,
+      );
+      const data = await res.json();
 
-      // 1. Check native account alias properties managed instantly by TzKT.
-      if (data.alias?.toLowerCase().includes(expectedCode.toLowerCase())) {
-        return true;
+      // If the user doesn't own any .tez domains, exit immediately
+      if (!Array.isArray(data) || data.length === 0) {
+        console.log(`❌ No Tezos Domains found for address: ${walletAddress}`);
+        return false;
       }
 
-      // 2. Fallback: Flatten the entire profile metadata layer (Tezos Domains / TZ Profiles)
-      // into a single string to hunt down the matching code string.
-      const rawDataString = JSON.stringify(data.metadata || {}).toLowerCase();
+      // 2. Convert the entire domain records array (including data, data.nickname, etc.) to lowercase text
+      const rawDomainsString = JSON.stringify(data).toLowerCase();
+      const cleanTargetCode = expectedCode.toLowerCase();
 
-      return rawDataString.includes(expectedCode.toLowerCase());
+      // 3. Search for the AnTzOS verification code string
+      return rawDomainsString.includes(cleanTargetCode);
     } catch (error) {
-      console.error("AnTzOS Tezos Indexer Error:", error);
+      console.error("AnTzOS Tezos Domains API Error:", error);
       return false;
     }
   }
 
-  /**
-   * Scans the TzKT token balance engine to confirm they hold the target NFT collection.
-   */
-  public async verifyAssetOwnership(
+  async verifyAssetOwnership(
     walletAddress: string,
     contractAddress: string,
   ): Promise<boolean> {
@@ -51,10 +40,8 @@ export class TezosVerifier implements IChainVerifier {
       const res = await fetch(
         `https://api.tzkt.io/v1/tokens/balances?account=${walletAddress}&token.contract=${contractAddress}`,
       );
-      const data = (await res.json()) as TzktTokenBalanceResponse;
-
-      // Validates that the account tracks a real balance greater than zero.
-      return data.length > 0 && parseInt(data[0]?.balance ?? "0") > 0;
+      const data = await res.json();
+      return data.length > 0 && parseInt(data[0].balance) > 0;
     } catch (error) {
       console.error("AnTzOS Tezos Balance Check Error:", error);
       return false;

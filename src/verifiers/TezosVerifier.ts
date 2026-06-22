@@ -8,40 +8,52 @@ export class TezosVerifier implements IChainVerifier {
     expectedCode: string,
   ): Promise<boolean> {
     try {
-      // The .any parameter tells TzKT to match if the wallet is EITHER the Owner OR the target Address resolution line
-      const res = await fetch(
-        `https://api.tzkt.io/v1/domains?anyof.owner.address=${walletAddress}`,
-      );
-      const domains = await res.json();
-
-      if (!Array.isArray(domains) || domains.length === 0) {
-        console.log(
-          `❌ No registered Tezos Domains found matching wallet address properties: ${walletAddress}`,
-        );
-        return false;
-      }
-
       const cleanTargetCode = expectedCode.toLowerCase();
+      console.log(`🔍 Initiating AnTzOS scan for wallet: ${walletAddress}`);
 
-      // Loop through all domains found under either ownership or address mapping records
-      for (const record of domains) {
-        // Flatten the complete data layout object tree
-        const flatRecordString = JSON.stringify(record).toLowerCase();
+      // 1. QUERY PATH A: Check if this wallet is the Domain OWNER (tz1aa9q...)
+      const resOwner = await fetch(
+        `https://api.tzkt.io/v1/domains?owner.eq=${walletAddress}`,
+      );
+      const domainsByOwner = await resOwner.json();
 
-        if (flatRecordString.includes(cleanTargetCode)) {
-          console.log(
-            `✅ Match discovered inside domain data matrix for: ${record.name}`,
-          );
-          return true;
+      if (Array.isArray(domainsByOwner) && domainsByOwner.length > 0) {
+        for (const record of domainsByOwner) {
+          const flatString = JSON.stringify(record).toLowerCase();
+          if (flatString.includes(cleanTargetCode)) {
+            console.log(
+              `✅ Match found! Code detected in a Domain owned by this wallet.`,
+            );
+            return true;
+          }
         }
       }
 
+      // 2. QUERY PATH B: Check if a Domain points/resolves TO this wallet (tz1ghSu...)
+      const resAddress = await fetch(
+        `https://api.tzkt.io/v1/domains?address.eq=${walletAddress}`,
+      );
+      const domainsByAddress = await resAddress.json();
+
+      if (Array.isArray(domainsByAddress) && domainsByAddress.length > 0) {
+        for (const record of domainsByAddress) {
+          const flatString = JSON.stringify(record).toLowerCase();
+          if (flatString.includes(cleanTargetCode)) {
+            console.log(
+              `✅ Match found! Code detected in a Domain pointing to this wallet.`,
+            );
+            return true;
+          }
+        }
+      }
+
+      // If it fails both explicit tracks
       console.log(
-        `❌ Target code string was not detected inside the found domain parameters.`,
+        `❌ Checked domains owned by or pointing to ${walletAddress}. No matching code found.`,
       );
       return false;
     } catch (error) {
-      console.error("AnTzOS Multi-Field Domain Verification Failure:", error);
+      console.error("AnTzOS Tezos Domain Dual-Query Failure:", error);
       return false;
     }
   }

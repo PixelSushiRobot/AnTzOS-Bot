@@ -1,138 +1,79 @@
-import type { IChainVerifier } from "./IChainVerifier.js";
-
-type EtherscanResponse<T> = {
-  status?: string;
-  message?: string;
-  result?: T;
-};
-
-type EtherscanSignatureRecord = {
-  message?: unknown;
-};
-
-type EtherscanTokenBalanceRecord = {
-  balance?: unknown;
-  TokenQuantity?: unknown;
-  tokenQuantity?: unknown;
-};
-
-const EVM_CHAIN_IDS = ["1", "8453", "42161"] as const;
+import { IChainVerifier } from "./IChainVerifier";
+import { ethers } from "ethers";
 
 export class EthVerifier implements IChainVerifier {
-  public readonly chainName = "ethereum";
+  chainName = "ethereum";
+  private apiKey = process.env.ETHERSCAN_API_KEY || "";
 
-  private readonly apiKey: string;
-
-  public constructor(apiKey = process.env.ETHERSCAN_API_KEY ?? "") {
-    this.apiKey = apiKey;
-  }
-
-  public async verifyOwnership(
+  /**
+   * ZERO-API LOCAL MATH VERIFICATION
+   * Verifies an off-chain Ethereum signature instantly using local cryptography.
+   */
+  async verifyOwnership(
     walletAddress: string,
     expectedCode: string,
+    signature?: string,
   ): Promise<boolean> {
-    if (!this.apiKey) {
+    if (!signature) {
+      console.log(
+        "❌ EVM Verification Failed: No signature string provided to the modal.",
+      );
       return false;
     }
 
     try {
-      const params = new URLSearchParams({
-        chainid: "1",
-        module: "account",
-        action: "getverifiedsignatures",
-        address: walletAddress,
-        apikey: this.apiKey,
-      });
-      const url = `https://api.etherscan.io/v2/api?${params.toString()}`;
-      const response = await fetch(url);
+      // ethers recovers the public wallet address that physically signed this exact text string
+      const recoveredAddress = ethers.verifyMessage(expectedCode, signature);
 
-      if (!response.ok) {
-        return false;
-      }
+      // Compare the recovered signing key against the address the user typed in
+      const isValid =
+        recoveredAddress.toLowerCase() === walletAddress.toLowerCase();
 
-      const payload = (await response.json()) as EtherscanResponse<
-        EtherscanSignatureRecord[]
-      >;
-
-      if (!Array.isArray(payload.result)) {
-        return false;
-      }
-
-      return payload.result.some((signature) => {
-        return (
-          typeof signature.message === "string" &&
-          signature.message.includes(expectedCode)
+      if (isValid) {
+        console.log(
+          `✅ EVM Cryptographic Ownership verified locally for: ${walletAddress}`,
         );
-      });
-    } catch {
+        return true;
+      }
+
+      console.log(
+        `❌ Address mismatch. Recovered signer: ${recoveredAddress}, Expected: ${walletAddress}`,
+      );
+      return false;
+    } catch (error) {
+      console.error("🔒 Local EVM Cryptographic Math Error:", error);
       return false;
     }
   }
 
-  public async verifyAssetOwnership(
+  /**
+   * Scans asset holdings across multiple EVM L2 networks using your free Etherscan V2 key
+   */
+  async verifyAssetOwnership(
     walletAddress: string,
     contractAddress: string,
   ): Promise<boolean> {
-    if (!this.apiKey) {
-      return false;
-    }
+    const targetChains = ["1", "8453", "42161"]; // Mainnet, Base, Arbitrum
 
-    for (const chainId of EVM_CHAIN_IDS) {
+    for (const chainId of targetChains) {
       try {
-        const params = new URLSearchParams({
-          chainid: chainId,
-          module: "account",
-          action: "addresstokenbalance",
-          address: walletAddress,
-          contractaddress: contractAddress,
-          apikey: this.apiKey,
-        });
-        const url = `https://api.etherscan.io/v2/api?${params.toString()}`;
-        const response = await fetch(url);
+        const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=addresstokenbalance&address=${walletAddress}&contractaddress=${contractAddress}&apikey=${this.apiKey}`;
+        const res = await fetch(url);
+        const data = await res.json();
 
-        if (!response.ok) {
-          continue;
-        }
-
-        const payload = (await response.json()) as EtherscanResponse<
-          EtherscanTokenBalanceRecord[] | EtherscanTokenBalanceRecord | string
-        >;
-
-        if (this.hasPositiveBalance(payload.result)) {
+        if (data.status === "1" && parseInt(data.result) > 0) {
+          console.log(
+            `🎨 NFT Found! Wallet holds token on Chain ID: ${chainId}`,
+          );
           return true;
         }
-      } catch {
-        continue;
+      } catch (err) {
+        console.error(
+          `Error querying EVM asset balance on chain ${chainId}:`,
+          err,
+        );
       }
     }
-
     return false;
-  }
-
-  private hasPositiveBalance(
-    result: EtherscanTokenBalanceRecord[] | EtherscanTokenBalanceRecord | string | undefined,
-  ): boolean {
-    if (Array.isArray(result)) {
-      return result.some((tokenBalance) => this.getBalanceValue(tokenBalance) > 0);
-    }
-
-    if (typeof result === "string") {
-      return Number(result) > 0;
-    }
-
-    if (result && typeof result === "object") {
-      return this.getBalanceValue(result) > 0;
-    }
-
-    return false;
-  }
-
-  private getBalanceValue(tokenBalance: EtherscanTokenBalanceRecord): number {
-    const value =
-      tokenBalance.balance ??
-      tokenBalance.TokenQuantity ??
-      tokenBalance.tokenQuantity;
-
-    return Number(value);
   }
 }

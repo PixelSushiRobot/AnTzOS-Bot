@@ -77,7 +77,8 @@ client.on("ready", async () => {
       await guild.commands.set([
         {
           name: "verify",
-          description: "🪐 Run AnTzOS Gatekeeper verification to claim your community role.",
+          description:
+            "🪐 Run AnTzOS Gatekeeper verification to claim your community role.",
         },
       ]);
       console.log(`⚡ Slash commands deployed instantly to Guild: ${GUILD_ID}`);
@@ -107,7 +108,10 @@ client.on("interactionCreate", async (interaction) => {
     }
   } catch (error) {
     console.error("Interaction handling failed:", error);
-    await replyWithFailure(interaction, "Verification hit a temporary issue. Please try again.");
+    await replyWithFailure(
+      interaction,
+      "Verification hit a temporary issue. Please try again.",
+    );
   }
 });
 
@@ -132,7 +136,9 @@ async function handleVerifyCommand(
         .setValue("ethereum"),
     );
 
-  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    selectMenu,
+  );
 
   await interaction.reply({
     content: "Choose the network you want to verify with.",
@@ -192,11 +198,12 @@ async function handleNetworkSelection(
 
   await interaction.reply({
     content:
-      `⛓️ **AnTzOS Ethereum & L2 Verification**\n\n` +
+      `⛓️ **AnTzOS Ethereum & L2 Verification (Local Validation)**\n\n` +
       `1. Copy your unique token code: \`${expectedCode}\`\n` +
-      `2. Go to **[etherscan.io/verifiedSignatures](https://etherscan.io/verifiedSignatures)**\n` +
-      `3. Connect your wallet, sign a message with your code, and click **Publish**.\n` +
-      `4. Re-run \`/verify\` to submit your validation form modal!`,
+      `2. Open **[etherscan.io/verifiedSignatures](https://etherscan.io/verifiedSignatures)**\n` +
+      `3. Connect your wallet, paste the code into the text input box, and click **Sign**.\n` +
+      `4. **Do not click publish!** Simply copy the long text hash under **Signature Hash** (starts with \`0x\`).\n\n` +
+      `*Re-run \`/verify\` right now to submit your verification form modal context fields!*`,
     components: [row],
     ephemeral: true,
   });
@@ -211,8 +218,10 @@ async function handleWalletButton(interaction: Interaction): Promise<void> {
 
   if (
     !session ||
-    (interaction.customId === ETH_OPEN_MODAL_CUSTOM_ID && session.chain !== "ethereum") ||
-    (interaction.customId === TEZOS_OPEN_MODAL_CUSTOM_ID && session.chain !== "tezos")
+    (interaction.customId === ETH_OPEN_MODAL_CUSTOM_ID &&
+      session.chain !== "ethereum") ||
+    (interaction.customId === TEZOS_OPEN_MODAL_CUSTOM_ID &&
+      session.chain !== "tezos")
   ) {
     await interaction.reply({
       content: "Your verification session expired. Run `/verify` again.",
@@ -228,7 +237,9 @@ async function handleWalletButton(interaction: Interaction): Promise<void> {
     return;
   }
 
-  await interaction.showModal(createWalletModal(session.expectedCode, session.chain));
+  await interaction.showModal(
+    createWalletModal(session.expectedCode, session.chain),
+  );
 }
 
 async function handleWalletModal(
@@ -250,19 +261,21 @@ async function handleWalletModal(
 
   if (!interaction.inGuild() || !interaction.guild) {
     await interaction.reply({
-      content: "Verification must be completed inside the AnTzOS Discord server.",
+      content:
+        "Verification must be completed inside the AnTzOS Discord server.",
       ephemeral: true,
     });
     return;
   }
 
   const config = chainConfigs[session.chain];
-  const walletAddress = interaction.fields.getTextInputValue(WALLET_INPUT_CUSTOM_ID).trim();
+  const walletAddress = interaction.fields
+    .getTextInputValue(WALLET_INPUT_CUSTOM_ID)
+    .trim();
 
   if (!config.roleId || !config.contractAddress) {
     await interaction.reply({
-      content:
-        `The ${config.displayName} verifier is missing its role or NFT contract configuration. Please tell an admin.`,
+      content: `The ${config.displayName} verifier is missing its role or NFT contract configuration. Please tell an admin.`,
       ephemeral: true,
     });
     return;
@@ -303,7 +316,10 @@ async function handleWalletModal(
   );
 }
 
-function createWalletModal(expectedCode: string, _chain: ChainKey): ModalBuilder {
+function createWalletModal(
+  expectedCode: string,
+  chain: ChainKey,
+): ModalBuilder {
   const walletInput = new TextInputBuilder()
     .setCustomId(WALLET_INPUT_CUSTOM_ID)
     .setLabel("Public Wallet Address")
@@ -313,8 +329,26 @@ function createWalletModal(expectedCode: string, _chain: ChainKey): ModalBuilder
 
   const modal = new ModalBuilder()
     .setCustomId(WALLET_MODAL_CUSTOM_ID)
-    .setTitle(`Code: ${expectedCode}`)
-    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(walletInput));
+    .setTitle(`${chain.toUpperCase()} Verification`)
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(walletInput),
+    );
+
+  // EVERY chain now collects the raw signature input string dynamically!
+  const sigInput = new TextInputBuilder()
+    .setCustomId("crypto_sig")
+    .setLabel("Signature String Payload")
+    .setPlaceholder(
+      chain === "ethereum"
+        ? "Paste your 0x... signature hash output"
+        : "Paste your domain signature fields",
+    )
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true);
+
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(sigInput),
+  );
 
   return modal;
 }

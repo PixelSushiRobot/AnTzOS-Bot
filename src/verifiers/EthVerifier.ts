@@ -26,44 +26,40 @@ export class EthVerifier implements IChainVerifier {
   ): Promise<boolean> {
     // 1 = Ethereum Mainnet, 8453 = Base, 42161 = Arbitrum
     const targetChains = ["1", "8453", "42161"];
+    const targetWallet = walletAddress.toLowerCase();
     const cleanContract = contractAddress.toLowerCase();
 
     for (const chainId of targetChains) {
       try {
         console.log(
-          `📡 Scanning Chain ${chainId} for NFT contract: ${cleanContract}...`,
+          `📡 Scanning Chain ${chainId} transfer history for contract: ${cleanContract}...`,
         );
 
-        // 🔎 TRACK 1: Standard ERC-721 Inventory Check
-        const inventoryUrl = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=addresstokeninventory&address=${walletAddress}&contractaddress=${cleanContract}&apikey=${this.apiKey}`;
-        const invRes = await fetch(inventoryUrl);
-        const invData = await invRes.json();
+        // Use tokennfttx — the most stable, globally supported Etherscan endpoint in existence
+        const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=tokennfttx&address=${targetWallet}&contractaddress=${cleanContract}&page=1&offset=100&sort=asc&apikey=${this.apiKey}`;
 
-        if (
-          invData.status === "1" &&
-          Array.isArray(invData.result) &&
-          invData.result.length > 0
-        ) {
-          console.log(`🎉 ERC-721 NFT Match found on chain ${chainId}!`);
-          return true;
-        }
+        const res = await fetch(url);
+        const data = await res.json();
 
-        // 🔎 TRACK 2: ERC-1155 / Multi-Token Event Transfer Log Lookback
-        // This checks if the wallet has ever interacted with or received tokens from this contract address
-        const tokenNftUrl = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=tokennfttx&address=${walletAddress}&contractaddress=${cleanContract}&page=1&offset=100&sort=desc&apikey=${this.apiKey}`;
-        const txRes = await fetch(tokenNftUrl);
-        const txData = await txRes.json();
+        if (data.status === "1" && Array.isArray(data.result)) {
+          let tokenCount = 0;
 
-        if (
-          txData.status === "1" &&
-          Array.isArray(txData.result) &&
-          txData.result.length > 0
-        ) {
-          // Double check that the final transfer balance math favors the user still holding an item
-          console.log(
-            `🎉 NFT Transfer history found for contract on chain ${chainId}! Validating access...`,
-          );
-          return true;
+          // Process the transfer logs to calculate current ownership state
+          for (const tx of data.result) {
+            if (tx.to && tx.to.toLowerCase() === targetWallet) {
+              tokenCount++; // User received an NFT
+            }
+            if (tx.from && tx.from.toLowerCase() === targetWallet) {
+              tokenCount--; // User transferred/sold an NFT
+            }
+          }
+
+          if (tokenCount > 0) {
+            console.log(
+              `🎉 NFT Confirmed! Wallet currently holds ${tokenCount} asset(s) on Chain ID: ${chainId}`,
+            );
+            return true;
+          }
         }
       } catch (err) {
         console.error(
@@ -74,7 +70,7 @@ export class EthVerifier implements IChainVerifier {
     }
 
     console.log(
-      `❌ Zero active token records located for contract: ${cleanContract}`,
+      `❌ No active token holdings located for contract: ${cleanContract}`,
     );
     return false;
   }
